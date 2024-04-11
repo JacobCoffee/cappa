@@ -1,11 +1,19 @@
 # Changelog
 
+## 0.19
+
+- feat: Implement exclusive argument groups.
+
 ## 0.18
+
+## 0.18.1
+
+- feat: Add `deprecated` option, allowing deprecation of args, options, and subcommands
 
 ### 0.18.0
 
 - feat: Add `default_short=False` and `default_long=False` options to command
-  for ease of definining option-heavy commands.
+  for ease of defining option-heavy commands.
 
 ## 0.17
 

@@ -6,17 +6,9 @@ import typing
 from dataclasses import dataclass, field
 from inspect import cleandoc
 
-import typing_extensions
 import typing_inspect
-from typing_extensions import Annotated, get_args, get_origin
+from typing_extensions import Annotated, Doc, get_args, get_origin
 from typing_inspect import is_literal_type
-
-try:
-    from typing_extensions import Doc
-
-    doc_type: type | None = Doc
-except ImportError:  # pragma: no cover
-    doc_type = None
 
 if sys.version_info < (3, 10):
     NoneType = type(None)  # pragma: no cover
@@ -31,44 +23,57 @@ MISSING: typing.TypeAlias = type(missing)  # type: ignore
 
 @dataclass
 class ObjectAnnotation(typing.Generic[T]):
-    obj: T | None
+    obj: T
     annotation: type
     doc: str | None = None
     other_annotations: list[type] = field(default_factory=list)
 
 
-def find_type_annotation(type_hint: type, kind: type[T]) -> ObjectAnnotation[T]:
-    instance = None
+def find_type_annotations(type_hint: type, kind: type[T]) -> list[ObjectAnnotation[T]]:
     doc = None
+    other_annotations: list[type] = []
 
-    other_annotations = []
+    annotations: list[tuple[type, type]] = []
     if get_origin(type_hint) is Annotated:
-        annotations = type_hint.__metadata__  # type: ignore
-        type_hint = type_hint.__origin__  # type: ignore
+        for item in type_hint.__metadata__:
+            annotations.append((item, type_hint.__origin__))  # type: ignore
+    elif is_union_type(type_hint):
+        type_hint_args = get_args(type_hint)
+        for t in type_hint_args:
+            origin_t = get_origin(t)
+            if origin_t is Annotated:
+                args_t = get_args(t)
+                for item in t.__metadata__:
+                    annotations.append((item, args_t[0]))
 
-        for annotation in annotations:
-            is_instance = isinstance(annotation, kind)
-            is_kind = isinstance(annotation, type) and issubclass(annotation, kind)
+    # Identify the first `Doc` annotation, and use that.
+    for annotation, _ in annotations:
+        if isinstance(annotation, Doc):
+            doc = cleandoc(annotation.documentation)  # type: ignore
+            break
 
-            if instance is None and (is_instance or is_kind):
-                instance = annotation
-                if is_kind:
-                    instance = typing.cast(type, annotation)()
-                    break
-            else:
-                other_annotations.append(annotation)
+    result: list[ObjectAnnotation] = []
+    for annotation, type_hint in annotations:
+        is_instance = isinstance(annotation, kind)
+        is_kind = isinstance(annotation, type) and issubclass(annotation, kind)
 
-        if doc_type:
-            for annotation in annotations:
-                if isinstance(annotation, doc_type):
-                    doc = cleandoc(annotation.documentation)  # type: ignore
-                    break
+        if is_instance or is_kind:
+            instance = annotation
+            if is_kind:
+                instance = typing.cast(type, annotation)()
+
+            result.append(
+                ObjectAnnotation(
+                    obj=instance,
+                    annotation=type_hint,
+                    doc=doc,
+                    other_annotations=other_annotations,
+                )
+            )
         else:
-            typing_extensions.assert_never(doc_type)  # type: ignore
+            other_annotations.append(annotation)
 
-    return ObjectAnnotation(
-        obj=instance, annotation=type_hint, doc=doc, other_annotations=other_annotations
-    )
+    return result
 
 
 def assert_type(value: typing.Any, typ: type[T]) -> T:

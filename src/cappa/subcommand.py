@@ -6,14 +6,16 @@ import typing
 from typing_extensions import Annotated, Self, TypeAlias
 from typing_inspect import is_optional_type, is_union_type
 
+from cappa.arg import Group
 from cappa.class_inspect import Field, extract_dataclass_metadata
 from cappa.completion.types import Completion
 from cappa.typing import (
     MISSING,
     NoneType,
+    ObjectAnnotation,
     T,
     assert_type,
-    find_type_annotation,
+    find_type_annotations,
     missing,
 )
 
@@ -36,31 +38,31 @@ class Subcommand:
 
     field_name: str | MISSING = ...
     required: bool | None = None
-    group: str | tuple[int, str] = (3, "Subcommands")
+    group: str | tuple[int, str] | Group = (3, "Subcommands")
     hidden: bool = False
 
     types: typing.Iterable[type] | MISSING = ...
     options: dict[str, Command] = dataclasses.field(default_factory=dict)
 
     @classmethod
-    def collect(cls, field: Field, type_hint: type) -> Self | None:
-        object_annotation = find_type_annotation(type_hint, cls)
-        subcommand = object_annotation.obj
+    def collect(cls, field: Field, type_hint: type) -> Subcommand | None:
+        subcommand = None
+        annotation = type_hint
 
-        field_metadata = extract_dataclass_metadata(field)
+        object_annotations = find_type_annotations(type_hint, Subcommand)
+        if object_annotations:
+            object_annotation = object_annotations[0]
+            subcommand = object_annotation.obj
+            annotation = object_annotation.annotation
+
+        field_metadata = extract_dataclass_metadata(field, Subcommand)
         if field_metadata:
-            if not isinstance(field_metadata, Subcommand):
-                return None
+            subcommand = field_metadata
 
-            subcommand = field_metadata  # type: ignore
-
-        if subcommand is None:
+        if not subcommand:
             return None
 
-        return subcommand.normalize(
-            object_annotation.annotation,
-            field_name=field.name,
-        )
+        return subcommand.normalize(annotation, field_name=field.name)
 
     def normalize(
         self,
@@ -136,17 +138,21 @@ def infer_options(arg: Subcommand, types: typing.Iterable[type]) -> dict[str, Co
     return options
 
 
-def infer_group(arg: Subcommand) -> str | tuple[int, str]:
-    group: str | tuple[int, str] | MISSING = arg.group
-    group_name = None
-    if isinstance(group, str):
-        group_name = group
-        group = missing
+def infer_group(arg: Subcommand) -> Group:
+    name = None
+    order = 3
 
-    if group is missing:
-        return (3, group_name or "Subcommands")
+    if isinstance(arg.group, Group):
+        return arg.group
 
-    return typing.cast(typing.Tuple[int, str], group)
+    if isinstance(arg.group, str):
+        name = arg.group
+
+    if isinstance(arg.group, tuple):
+        order, name = arg.group
+
+    assert name
+    return Group(name=name, order=order)
 
 
 Subcommands: TypeAlias = Annotated[T, Subcommand]

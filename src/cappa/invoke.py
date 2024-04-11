@@ -10,13 +10,13 @@ from dataclasses import dataclass, field
 from cappa.command import Command, HasCommand
 from cappa.output import Exit, Output
 from cappa.subcommand import Subcommand
-from cappa.typing import find_type_annotation, get_type_hints
+from cappa.typing import find_type_annotations, get_type_hints
 
 C = typing.TypeVar("C", bound=HasCommand)
 
 
 class InvokeResolutionError(RuntimeError):
-    """Raised for errors encountered during evaluation of invoke depdendencies."""
+    """Raised for errors encountered during evaluation of invoke dependencies."""
 
 
 @dataclass(frozen=True)
@@ -175,7 +175,7 @@ def resolve_global_deps(
         deps = typing.cast(typing.Mapping, {d: Dep(d) for d in deps})
 
     for source_function, dep in deps.items():
-        # Deps need to be fullfilled, whereas raw values are taken directly.
+        # Deps need to be fulfilled, whereas raw values are taken directly.
         if isinstance(dep, Dep):
             value = Resolved(dep.callable, fullfill_deps(dep.callable, implicit_deps))
         else:
@@ -245,7 +245,7 @@ def resolve_implicit_deps(command: Command, instance: HasCommand) -> dict:
 
         option_instance = getattr(instance, arg.field_name)
         if option_instance is None:
-            # None is a valid subcommand instance value, but it wont exist as a dependency
+            # None is a valid subcommand instance value, but it won't exist as a dependency
             # where an actual command has been selected.
             continue
 
@@ -273,19 +273,21 @@ def fullfill_deps(fn: Callable, fullfilled_deps: dict) -> typing.Any:
 
     for name, param in signature.parameters.items():
         annotation = annotations.get(name)
+        dep = None
 
         if annotation is None:
             dep = None
         else:
-            object_annotation = find_type_annotation(annotation, Dep)
-            dep = object_annotation.obj
-            annotation = object_annotation.annotation
+            object_annotation = find_type_annotations(annotation, Dep)
+            if object_annotation:
+                dep = object_annotation[0].obj
+                annotation = object_annotation[0].annotation
 
         annotation = typing.get_origin(annotation) or annotation
 
         if dep is None:
-            # Non-annotated args are either implicit dependencies (and thus already fullfilled),
-            # or arguments that we cannot fullfill
+            # Non-annotated args are either implicit dependencies (and thus already fulfilled),
+            # or arguments that we cannot fulfill
             if annotation not in fullfilled_deps:
                 if param.default is param.empty:
                     annotation_name = annotation.__name__ if annotation else "<empty>"
