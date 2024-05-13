@@ -3,14 +3,13 @@ from __future__ import annotations
 import dataclasses
 import typing
 
+from type_lens import TypeView
 from typing_extensions import Annotated, Self, TypeAlias
-from typing_inspect import is_optional_type, is_union_type
 
 from cappa.class_inspect import Field, extract_dataclass_metadata
 from cappa.completion.types import Completion
 from cappa.typing import (
     MISSING,
-    NoneType,
     T,
     assert_type,
     find_type_annotation,
@@ -58,15 +57,18 @@ class Subcommand:
             return None
 
         return subcommand.normalize(
-            object_annotation.annotation,
+            TypeView(type_hint),
             field_name=field.name,
         )
 
     def normalize(
         self,
-        annotation=NoneType,
+        annotation: TypeView | None = None,
         field_name: str | None = None,
     ) -> Self:
+        if annotation is None:
+            annotation = TypeView(...)
+
         field_name = field_name or assert_type(self.field_name, str)
         types = infer_types(self, annotation)
         required = infer_required(self, annotation)
@@ -100,22 +102,23 @@ class Subcommand:
         return [Completion(o) for o in self.options if partial in o]
 
 
-def infer_types(arg: Subcommand, annotation: type) -> typing.Iterable[type]:
+def infer_types(arg: Subcommand, annotation: TypeView) -> typing.Iterable[type]:
     if arg.types is not missing:
         return typing.cast(typing.Iterable[type], arg.types)
 
-    if is_union_type(annotation):
-        types = typing.get_args(annotation)
-        return tuple([t for t in types if not is_optional_type(t)])
+    if annotation.is_union:
+        return tuple(
+            [t.annotation for t in annotation.inner_types if not t.is_optional]
+        )
 
-    return (annotation,)
+    return (annotation.annotation,)
 
 
-def infer_required(arg: Subcommand, annotation: type) -> bool:
+def infer_required(arg: Subcommand, annotation: TypeView) -> bool:
     if arg.required is not None:
         return arg.required
 
-    return not is_optional_type(annotation)
+    return not annotation.is_optional
 
 
 def infer_options(arg: Subcommand, types: typing.Iterable[type]) -> dict[str, Command]:

@@ -6,7 +6,7 @@ import inspect
 import typing
 from enum import Enum
 
-import typing_inspect
+from type_lens import TypeView
 from typing_extensions import Self, get_args
 
 from cappa.typing import MISSING, find_type_annotation, get_type_hints, missing
@@ -275,6 +275,4 @@ def get_command_capable_object(obj):
 
 
 def get_type(typ):
-    if typing_inspect.is_optional_type(typ):
-        return get_args(typ)[0]
-    return typ
+    return TypeView(typ).unwrap_optional()

@@ -7,9 +7,8 @@ from dataclasses import dataclass, field
 from inspect import cleandoc
 
 import typing_extensions
-import typing_inspect
+from type_lens import TypeView
 from typing_extensions import Annotated, get_args, get_origin
-from typing_inspect import is_literal_type
 
 try:
     from typing_extensions import Doc
@@ -17,11 +16,6 @@ try:
     doc_type: type | None = Doc
 except ImportError:  # pragma: no cover
     doc_type = None
-
-if sys.version_info < (3, 10):
-    NoneType = type(None)  # pragma: no cover
-else:
-    NoneType = types.NoneType  # type: ignore
 
 T = typing.TypeVar("T")
 
@@ -76,45 +70,12 @@ def assert_type(value: typing.Any, typ: type[T]) -> T:
     return typing.cast(T, value)
 
 
-def backend_type(typ) -> str:
-    if is_literal_type(typ):
-        return get_args(typ)[0]
+def backend_type(annotation: TypeView) -> str:
+    if annotation.is_literal:
+        assert annotation.args
+        return annotation.args[0]
 
-    return f"<{typ.__name__}>"
-
-
-def is_union_type(typ):
-    if typing_inspect.is_union_type(typ):
-        return True
-
-    if hasattr(types, "UnionType") and typ is types.UnionType:
-        return True  # pragma: no cover
-    return False
-
-
-def is_none_type(typ):
-    return typ is NoneType
-
-
-def is_subclass(typ, superclass):
-    if not isinstance(typ, type):
-        return False
-
-    if typ is str:
-        return False
-
-    return issubclass(typ, superclass)
-
-
-def get_optional_type(typ: typing.Optional[T]):
-    if typ is NoneType:
-        return typ
-
-    args = get_args(typ)
-    if len(args) == 2:
-        return args[0]
-
-    return typing.Union[args]
+    return f"<{annotation.annotation.__name__}>"
 
 
 def get_type_hints(obj, include_extras=False):
@@ -140,19 +101,6 @@ def fix_annotated_optional_type_hints(
         ):
             hints[param_name] = next(iter(args))
     return hints
-
-
-def is_of_type(annotation, types):
-    if typing_inspect.is_optional_type(annotation):
-        args = get_args(annotation)
-    else:
-        args = (annotation,)
-
-    for arg in args:
-        arg_annotation = get_origin(arg) or arg
-        if is_subclass(arg_annotation, types):
-            return True
-    return False
 
 
 if sys.version_info >= (3, 10):
